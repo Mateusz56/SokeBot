@@ -1,27 +1,39 @@
-﻿using Microsoft.EntityFrameworkCore;
+﻿using Discord;
+using Microsoft.EntityFrameworkCore;
 using SokeBot.DataModel.RiotApi;
+using System.Diagnostics.CodeAnalysis;
+using System.Timers;
 
 namespace SokeBot
 {
     public class RiotPlayerWatcher
     {
         private readonly RiotApi riotApi;
-        private readonly BotDb db;
         private readonly BotMain bot;
+        private readonly FileLogger logger;
 
-        public RiotPlayerWatcher(RiotApi riotApi, BotDb db, BotMain bot)
+        public RiotPlayerWatcher(RiotApi riotApi, BotMain bot, FileLogger logger)
         {
             this.riotApi = riotApi;
-            this.db = db;
             this.bot = bot;
+            this.logger = logger;
         }
 
-        public async Task WatchPlayers()
+        public void StartWatcher()
         {
-            while(true)
+            var timer = new System.Timers.Timer(TimeSpan.FromSeconds(61));
+            timer.Elapsed += WatchPlayers;
+            timer.AutoReset = true;
+            timer.Start();
+        }
+
+        public async void WatchPlayers(object sender, ElapsedEventArgs e)
+        {
+            try
             {
+                using var db = new BotDb();
                 var ids = await db.RitoPlayers.Where(x => x.GameInProgress == null).ToListAsync();
-                
+
                 var games = ids.Select(async x => new RiotPlayerGameInProgress { player = x, game = await riotApi.GetGameInProgress(x.Puuid) }).Where(x => x.Result.game != null).ToList();
 
                 games.ForEach(x =>
@@ -35,29 +47,45 @@ namespace SokeBot
                 });
 
                 db.SaveChanges();
-                Console.WriteLine("----- FOUND NEW GAMES -----");
-                games.ForEach(x => Console.WriteLine(x.Result.player.Name));
 
                 var gamesInProgress = await db.GamesInProgress.Include(x => x.Player).ToListAsync();
+
                 var finishedGames = gamesInProgress
-                    .Select(async x => await GameInProgressToPlayerMatch(x))
+                    .Distinct(new GameInProgressComparer())
+                    .Select(async x => await GameInProgressToMatch(x))
                     .Select(x => x.Result)
                     .Where(x => x != null)
                     .ToList();
 
-                var finishedGamesIds = finishedGames.Select(x => x.match.info.gameId);
+                var playerIds = finishedGames.SelectMany(x => x.info.participants.Select(p => p.puuid)).Distinct().ToList();
+                var finishedGamesIds = finishedGames.Select(x => x.info.gameId);
 
                 db.GamesInProgress.RemoveRange(db.GamesInProgress.Where(x => finishedGamesIds.Contains(x.GameId)));
                 db.SaveChanges();
 
-                finishedGames.ForEach(x => {
-                    var player = x.match.info.participants.First(p => p.puuid == x.puuid);
-                    var dbPlayer = db.RitoPlayers.AsNoTracking().Where(x => x.Puuid == player.puuid).Include(x => x.ReportChannels).First();
-                    dbPlayer.ReportChannels.ToList().ForEach(
-                        x => bot.SendTextMessage((ulong)x.GuildId, (ulong)x.ChannelId, $"{player.riotIdGameName} - {(player.win ? "Wygranko!" : "Przegranko :/")} - {player.championName}: {player.kills}/{player.deaths}/{player.assists}"));
-                });
+                finishedGames.ForEach(x =>
+                {
+                    var gamePlayers = x.info.participants.Select(p => p.puuid).ToList();
+                    var watchedPlayers = db.RitoPlayers.AsNoTracking()
+                        .Where(x => gamePlayers.Contains(x.Puuid))
+                        .Include(x => x.ReportChannels)
+                        .ToList();
 
-                Thread.Sleep(TimeSpan.FromSeconds(61));
+                    var reportChannels = watchedPlayers
+                        .SelectMany(x => x.ReportChannels)
+                        .Distinct(new ReportChannelComparer())
+                        .ToList();
+
+                    var embed = new MatchEmbedGenerator().BuildEmbed(x, watchedPlayers.Select(x => x.Puuid).ToList());
+                    reportChannels.ForEach(x =>
+                    {
+                        bot.SendEmbedMessage((ulong)x.GuildId, (ulong)x.ChannelId, embed);
+                    });
+                });
+            }
+            catch (Exception ex)
+            {
+                logger.Log(ex.ToString());
             }
         }
 
@@ -69,6 +97,57 @@ namespace SokeBot
                 return null;
 
             return new PlayerMatch { match = match, puuid = game.Player.Puuid };
+        }
+
+        private async Task<RiotMatch> GameInProgressToMatch(GameInProgress game)
+        {
+            var match = await riotApi.GetGameResult($"EUN1_{game.GameId}");
+
+            return match;
+        }
+
+        public class GameInProgressComparer : IEqualityComparer<GameInProgress>
+        {
+            public bool Equals(GameInProgress? x, GameInProgress? y)
+            {
+                if (Object.ReferenceEquals(x, y)) return true;
+
+                if (Object.ReferenceEquals(x, null) || Object.ReferenceEquals(y, null))
+                    return false;
+
+                return x.GameId == y.GameId;
+            }
+
+            public int GetHashCode([DisallowNull] GameInProgress obj)
+            {
+                if (Object.ReferenceEquals(obj, null)) return 0;
+
+                return obj.GameId.GetHashCode();
+            }
+        }
+
+        public class ReportChannelComparer : IEqualityComparer<ReportChannel>
+        {
+            public bool Equals(ReportChannel? x, ReportChannel? y)
+            {
+                if (Object.ReferenceEquals(x, y)) return true;
+
+                if (Object.ReferenceEquals(x, null) || Object.ReferenceEquals(y, null))
+                    return false;
+
+                return x.GuildId == y.GuildId && x.ChannelId == y.ChannelId;
+            }
+
+            public int GetHashCode([DisallowNull] ReportChannel obj)
+            {
+                if (Object.ReferenceEquals(obj, null)) return 0;
+
+                int guildIdHashCode = obj.GuildId.GetHashCode();
+
+                int channelIdHashCode = obj.ChannelId.GetHashCode();
+
+                return guildIdHashCode ^ channelIdHashCode;
+            }
         }
     }
 }

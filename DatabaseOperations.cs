@@ -1,4 +1,6 @@
-﻿namespace SokeBot
+﻿using Microsoft.EntityFrameworkCore;
+
+namespace SokeBot
 {
     public class DatabaseOperations
     {
@@ -14,6 +16,16 @@
             botDb.RitoPlayers.RemoveRange(botDb.RitoPlayers);
             botDb.GamesInProgress.RemoveRange(botDb.GamesInProgress);
             botDb.SaveChanges();
+        }
+
+        public async Task<RitoPlayer> GetUserReportChannels(string puuid)
+        {
+            return await botDb.RitoPlayers.Where(x => x.Puuid == puuid).Include(x => x.ReportChannels).FirstOrDefaultAsync();
+        }
+
+        public async Task RemoveBadData()
+        {
+            await botDb.GamesInProgress.ExecuteDeleteAsync();
         }
     }
 }

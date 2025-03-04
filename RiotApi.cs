@@ -35,13 +35,13 @@ namespace SokeBot
         {
             var response = await lolHttpClient.GetAsync($"lol/spectator/v5/active-games/by-summoner/{puuid}");
 
-            if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+            if (response.StatusCode != System.Net.HttpStatusCode.OK)
                 return null;
 
             var content = await response.Content.ReadAsStringAsync();
 
             var game = JsonConvert.DeserializeObject<RiotGameInProgress>(content);
-            Console.WriteLine($"Game found: Puuid = {puuid}; GameId = {game.gameId}");
+            //Console.WriteLine($"Game found: Puuid = {puuid}; GameId = {game.gameId}");
             return game;
         }
 

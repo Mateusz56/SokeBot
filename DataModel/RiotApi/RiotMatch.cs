@@ -15,6 +15,7 @@
     {
         public long gameId { get; set; }
         public List<Participant> participants { get; set; }
+        public int queueId { get; set; }
     }
 
     public class Participant
@@ -44,6 +45,8 @@
         public int trueDamageDealtToChampions { get; set; }
         public int magicDamageDealtToChampions { get; set; }
         public int physicalDamageDealtToChampions { get; set; }
+
+        public string teamPosition { get; set; }
         public bool win { get; set; }
     }
 

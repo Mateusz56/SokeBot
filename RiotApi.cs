@@ -8,7 +8,7 @@ namespace SokeBot
     {
         private readonly HttpClient accountHttpClient;
         private readonly HttpClient lolHttpClient;
-        private readonly string riotApiKey = "";
+        private readonly string riotApiKey = ConfigProvider.GetRiotApiKey();
 
 
         public RiotApi()

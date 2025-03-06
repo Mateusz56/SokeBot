@@ -12,7 +12,7 @@ namespace SokeBot
 
         private Action startedCallback;
         private static DiscordSocketClient client;
-        string token = "";
+        string token = ConfigProvider.GetDiscordBotToken();
 
         public BotMain(RiotApi riotApi, DataLogger dataLogger, DatabaseOperations databaseOperations)
         {
@@ -255,7 +255,11 @@ namespace SokeBot
             var gameid = command.Data.Options.Where(x => x.Name == "gameid").First().Value.ToString();
             var puuids = command.Data.Options.Where(x => x.Name.Contains("puuid")).Select(x => x.Value.ToString()).ToList();
             var game = await riotApi.GetGameResult("EUN1_" + gameid);
-            var embed = new MatchEmbedGenerator().BuildEmbed(game, puuids);
+            var embed = new EmbedBuilder()
+                .WithTitle("Test")
+                .AddField("Test tt", "QQQ")
+                .WithImageUrl("https://i.pinimg.com/736x/3e/7c/04/3e7c048da4c2153fd459f35a35a7d9a4.jpg")
+                .Build();
 
             await command.RespondAsync(embed: embed);
         }

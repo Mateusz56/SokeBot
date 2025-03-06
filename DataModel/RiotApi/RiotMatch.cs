@@ -16,6 +16,7 @@
         public long gameId { get; set; }
         public List<Participant> participants { get; set; }
         public int queueId { get; set; }
+        public MatchTeam[] teams { get; set; }
     }
 
     public class Participant
@@ -54,5 +55,16 @@
     {
         public int teamId { get; set; }
         public bool win { get; set; }
+        public TeamObjectives objectives { get; set; }
+    }
+
+    public class TeamObjectives
+    {
+        public TeamObjective champion { get; set; }
+    }
+
+    public class TeamObjective
+    {
+        public int kills { get; set; }
     }
 }
